@@ -53,8 +53,8 @@ void *listener6(void *args) {
     int rcvsock;                              /* receive (icmp) socket file descriptor */
 
     /* block until main thread says we're ready. */
-    trace->lock(); 
-    trace->unlock(); 
+    trace->lock();
+    trace->unlock();
 
 #ifdef _LINUX
     if ((rcvsock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
@@ -102,7 +102,7 @@ void *listener6(void *args) {
         }
         nullreads = 0;
         memset(buf, 0, PKTSIZE);
-        len = recv(rcvsock, buf, PKTSIZE, 0); 
+        len = recv(rcvsock, buf, PKTSIZE, 0);
 #else
         memset(bpfbuf, 0, blen);
         len = read(rcvsock, bpfbuf, blen);
@@ -122,15 +122,16 @@ reloop:
                  (ippayload->icmp6_type == ICMP6_DST_UNREACH) or
                  (ippayload->icmp6_type == ICMP6_ECHO_REPLY) ) {
                 ICMP *icmp = new ICMP6(ip, ippayload, elapsed, trace->config->coarse);
-                if (icmp->is_yarrp) {
-                    if (verbosity > LOW)
+                if (icmp->is_yarrp && icmp->found_ioam_trace) {
+                    if (verbosity > LOW) {
                         icmp->print();
+                    }
                     /* Fill mode logic. */
                     if (trace->config->fillmode) {
                         if ( (icmp->getTTL() >= trace->config->maxttl) and
                           (icmp->getTTL() < trace->config->fillmode) ) {
                          trace->stats->fills+=1;
-                         trace->probe(icmp->quoteDst6(), icmp->getTTL() + 1); 
+                         trace->probe(icmp->quoteDst6(), icmp->getTTL() + 1);
                         }
                     }
                     icmp->write(&(trace->config->out), trace->stats->count);
@@ -144,7 +145,7 @@ reloop:
                 }
                 delete icmp;
             }
-        } 
+        }
 #ifndef _LINUX
 	p += BPF_WORDALIGN(bh->bh_hdrlen + bh->bh_caplen);
 	if (p < bpfbuf + len) goto reloop;

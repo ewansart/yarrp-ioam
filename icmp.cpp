@@ -4,8 +4,9 @@
    Description: yarrp listener thread
 ****************************************************************************/
 #include "yarrp.h"
+#include <netinet/ip6.h>
 
-ICMP::ICMP() : 
+ICMP::ICMP() :
    rtt(0), ttl(0), type(0), code(0), length(0), quote_p(0), sport(0), dport(0), ipid(0),
    probesize(0), replysize(0), replyttl(0), replytos(0)
 {
@@ -86,7 +87,7 @@ ICMP4::ICMP4(struct ip *ip, struct icmp *icmp, uint32_t elapsed, bool _coarse): 
                 cerr << "** RTT decode, elapsed: " << elapsed << " encoded: " << timestamp << endl;
                 sport = dport = 0;
             }
-        } 
+        }
 
         /* Original probe was ICMP */
         else if (quote->ip_p == IPPROTO_ICMP) {
@@ -108,10 +109,10 @@ ICMP4::ICMP4(struct ip *ip, struct icmp *icmp, uint32_t elapsed, bool _coarse): 
         length = (ntohl(icmp->icmp_void) & 0x00FF0000) >> 16;
         length *= 4;
         if (replysize >= 168) {
-            //printf("*** ICMP Extension %d/%d\n", length, replysize);
+            // printf("*** ICMP Extension %d/%d\n", length, replysize);
             ptr = (unsigned char *) icmp;
             ptr += length+8;
-            if (length < 128) 
+            if (length < 128)
                 ptr += (128-length);
             icmp_extension_t *eh = (icmp_extension_t *) ptr;
             //printf("*** ICMP Extension ver: %d length: %d checksum: %x\n", eh->ver, ntohs(eh->len), ntohs(eh->cksum));
@@ -141,7 +142,7 @@ ICMP4::ICMP4(struct ip *ip, struct icmp *icmp, uint32_t elapsed, bool _coarse): 
                     lse->exp   = (htonl(*tmp) & 0x00000F00) >> 8;
                     lse->ttl   = (htonl(*tmp) & 0x000000FF);
                     // bottom of stack?
-                    if (lse->exp & 0x01) 
+                    if (lse->exp & 0x01)
                         break;
                     ptr+=4;
                 }
@@ -173,14 +174,14 @@ ICMP6::ICMP6(struct ip6_hdr *ip, struct icmp6_hdr *icmp, uint32_t elapsed, bool 
      * ICMP6 hdr                struct icmp6_hdr *icmp;         <- ptr
      *  IPv6 hdr                struct ip6_hdr *icmpip;
      *  Ext hdr                 struct ip6_ext *eh; (if present)
-     *  Probe transport hdr     struct tcphdr,udphdr,icmp6_hdr; 
+     *  Probe transport hdr     struct tcphdr,udphdr,icmp6_hdr;
      *  Yarrp payload           struct ypayload *qpayload;
      */
 
-    unsigned char *ptr = (unsigned char *) icmp; 
+    unsigned char *ptr = (unsigned char *) icmp;
     quote = (struct ip6_hdr *) (ptr + sizeof(struct icmp6_hdr));            /* Quoted IPv6 hdr */
     struct ip6_ext *eh = NULL;                /* Pointer to any extension header */
-    struct ypayload *qpayload = NULL;     /* Quoted ICMPv6 yrp payload */ 
+    struct ypayload *qpayload = NULL;     /* Quoted ICMPv6 yrp payload */
     uint16_t ext_hdr_len = 0;
     quote_p = quote->ip6_nxt;
     int offset = 0;
@@ -191,7 +192,29 @@ ICMP6::ICMP6(struct ip6_hdr *ip, struct icmp6_hdr *icmp, uint32_t elapsed, bool 
         // handle hop-by-hop (0), dest (60) and frag (44) extension headers
         if ( (quote_p == 0) or (quote_p == 44) or (quote_p == 60) ) {
             eh = (struct ip6_ext *) (ptr + sizeof(struct icmp6_hdr) + sizeof(struct ip6_hdr) );
-            ext_hdr_len = 8;
+            if (quote_p == 0) {
+                // IOAM HbH header
+                ext_hdr_len = 64;
+                if (quote->ip6_nxt == IPPROTO_HOPOPTS) {
+                    struct ip6_hbh *ip6_opt = (struct ip6_hbh *) (ptr + sizeof(struct icmp6_hdr) + sizeof(struct ip6_hdr));
+                    uint8_t eh_type = *((uint8_t*) (eh)+4);
+                    if (eh_type == 49) { // IOAM pre-alloc trace
+                        uint8_t node_len = ((*((uint8_t*) (eh)+10))>>3)*4;
+                        uint8_t* trace_data = (uint8_t*) (eh)+16;
+                        for (uint8_t i = 0; i < node_len || i < 48; i++) {
+                            if (trace_data[i] != 0) {
+                                if (verbosity > LOW) {
+                                    printf("*** Found IOAM trace!\n");
+                                }
+                                found_ioam_trace = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            else
+                ext_hdr_len = 8;
             quote_p = eh->ip6e_nxt;
         }
 
@@ -209,7 +232,7 @@ ICMP6::ICMP6(struct ip6_hdr *ip, struct icmp6_hdr *icmp, uint32_t elapsed, bool 
         }
     }
 
-    if (ntohl(qpayload->id) == 0x79727036) 
+    if (ntohl(qpayload->id) == 0x79727036)
         is_yarrp = true;
     ttl = qpayload->ttl;
     instance = qpayload->instance;
@@ -274,7 +297,7 @@ void ICMP::print(char *src, char *dst, int sum) {
     printf("\tProbe TTL: %d\n", ttl);
     if (ipid) printf("\tReply IPID: %d\n", ipid);
     if (quote_p) printf("\tQuoted Protocol: %d\n", quote_p);
-    if ( (quote_p == IPPROTO_TCP) || (quote_p == IPPROTO_UDP) ) 
+    if ( (quote_p == IPPROTO_TCP) || (quote_p == IPPROTO_UDP) )
       printf("\tProbe TCP/UDP src/dst port: %d/%d\n", sport, dport);
     if ( (quote_p == IPPROTO_ICMP) || (quote_p == IPPROTO_ICMPV6) )
       printf("\tQuoted ICMP checksum: %d\n", sport);
@@ -303,7 +326,7 @@ ICMP::getMPLS() {
     return mpls_label_string;
 }
 
-void 
+void
 ICMP4::print() {
     char src[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &ip_src, src, INET_ADDRSTRLEN);
@@ -370,14 +393,14 @@ void ICMP6::write(FILE ** out, uint32_t count) {
     char target[INET6_ADDRSTRLEN];
     inet_ntop(AF_INET6, &ip_src, src, INET6_ADDRSTRLEN);
     if (((type == ICMP6_TIME_EXCEEDED) and (code == ICMP6_TIME_EXCEED_TRANSIT)) or
-    (type == ICMP6_DST_UNREACH)) { 
+    (type == ICMP6_DST_UNREACH)) {
         inet_ntop(AF_INET6, &(quote->ip6_dst.s6_addr), target, INET6_ADDRSTRLEN);
-    } 
+    }
     /* In the case of an ECHO REPLY, the quote does not contain the invoking
      * packet, so we rely on the target as encoded in the yarrp payload */
     else if (type == ICMP6_ECHO_REPLY) {
         inet_ntop(AF_INET6, yarrp_target, target, INET6_ADDRSTRLEN);
-    } 
+    }
     /* If we don't know what else to do, assume that source of the packet
      * was the target */
     else {

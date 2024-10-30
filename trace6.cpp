@@ -11,7 +11,7 @@ Traceroute6::Traceroute6(YarrpConfig *_config, Stats *_stats) : Traceroute(_conf
     if (config->probesrc) {
         source6.sin6_family = AF_INET6;
         if (inet_pton(AF_INET6, config->probesrc, &source6.sin6_addr) != 1)
-          fatal("** Bad source address."); 
+          fatal("** Bad source address.");
     } else {
         infer_my_ip6(&source6);
     }
@@ -74,7 +74,7 @@ void Traceroute6::probePrint(struct in6_addr addr, int ttl) {
 
 void
 Traceroute6::probe(struct in6_addr addr, int ttl) {
-#ifdef _LINUX 
+#ifdef _LINUX
     struct sockaddr_ll target;
     memset(&target, 0, sizeof(target));
     target.sll_ifindex = if_nametoindex(config->int_name);
@@ -111,7 +111,7 @@ Traceroute6::probe(void *target, struct in6_addr addr, int ttl) {
       default:
         cerr << "** bad trace type" << endl;
         assert(false);
-    } 
+    }
 
     /* Shim in an extension header? */
     if (config->v6_eh != 255) {
@@ -120,8 +120,8 @@ Traceroute6::probe(void *target, struct in6_addr addr, int ttl) {
         } else {
             make_hbh_eh(outip->ip6_nxt);
         }
-        outip->ip6_nxt = config->v6_eh; 
-        ext_hdr_len = 8;
+        outip->ip6_nxt = config->v6_eh;
+        ext_hdr_len = 64;
     }
 
     /* Populate a yarrp payload */
@@ -130,7 +130,7 @@ Traceroute6::probe(void *target, struct in6_addr addr, int ttl) {
     payload->target = addr;
     uint32_t diff = elapsed();
     payload->diff = diff;
-    u_char *data = (u_char *)(frame + ETH_HDRLEN + sizeof(ip6_hdr) 
+    u_char *data = (u_char *)(frame + ETH_HDRLEN + sizeof(ip6_hdr)
                               + ext_hdr_len + transport_hdr_len);
     memcpy(data, payload, sizeof(struct ypayload));
 
@@ -164,27 +164,34 @@ void
 Traceroute6::make_frag_eh(uint8_t nxt) {
     void *transport = frame + ETH_HDRLEN + sizeof(ip6_hdr);
     struct ip6_frag *eh = (struct ip6_frag *) transport;
-    eh->ip6f_nxt = nxt;  
+    eh->ip6f_nxt = nxt;
     eh->ip6f_reserved = 0;
     eh->ip6f_offlg = 0;
     eh->ip6f_ident = 0x8008;
 }
 
+// With IOAM extension header
 void
 Traceroute6::make_hbh_eh(uint8_t nxt) {
     uint8_t *transport = frame + ETH_HDRLEN + sizeof(ip6_hdr);
     struct ip6_ext *eh = (struct ip6_ext *) transport;
-    eh->ip6e_nxt = nxt;  
-    eh->ip6e_len = 0;
+    eh->ip6e_nxt = nxt;
+    eh->ip6e_len = 7;
     transport+=2;
-    struct ip6_opt *opt = (struct ip6_opt *) transport;
-    opt->ip6o_type = IP6OPT_PADN;
-    opt->ip6o_len = 4;
-    transport+=2;
-    memset(transport, 0, 4);
+    const uint8_t packet_bytes[] = {
+      0x01, 0x00, 0x31, 0x3a, 0x00, 0x00, 0x00, 0x7b,
+      0x60, 0x0c, 0xf6, 0xe0, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    };
+    memcpy(transport, packet_bytes, 62);
 }
 
-void 
+void
 Traceroute6::make_transport(int ext_hdr_len) {
     void *transport = frame + ETH_HDRLEN + sizeof(ip6_hdr) + ext_hdr_len;
     uint16_t sum = in_cksum((unsigned short *)&(outip->ip6_dst), 16);
@@ -195,14 +202,20 @@ Traceroute6::make_transport(int ext_hdr_len) {
         icmp6->icmp6_cksum = 0;
         icmp6->icmp6_id = htons(sum);
         icmp6->icmp6_seq = htons(pcount);
+        uint8_t ip6_nxt_tmp = outip->ip6_nxt;
+        outip->ip6_nxt = IPPROTO_ICMPV6;
         icmp6->icmp6_cksum = p_cksum(outip, (u_short *) icmp6, packlen);
+        outip->ip6_nxt = ip6_nxt_tmp;
     } else if (config->type == TR_UDP6) {
         struct udphdr *udp = (struct udphdr *)transport;
         udp->uh_sport = htons(sum);
         udp->uh_dport = htons(dstport);
         udp->uh_ulen = htons(packlen);
         udp->uh_sum = 0;
+        uint8_t ip6_nxt_tmp = outip->ip6_nxt;
+        outip->ip6_nxt = IPPROTO_ICMPV6;
         udp->uh_sum = p_cksum(outip, (u_short *) udp, packlen);
+        outip->ip6_nxt = ip6_nxt_tmp;
         /* set checksum for paris goodness */
         uint16_t crafted_cksum = htons(0xbeef);
         payload->fudge = compute_data(udp->uh_sum, crafted_cksum);
@@ -218,10 +231,10 @@ Traceroute6::make_transport(int ext_hdr_len) {
         tcp->th_x2 = 0;
         tcp->th_flags = 0;
         tcp->th_urp = htons(0);
-        if (config->type == TR_TCP6_SYN) 
-           tcp->th_flags |= TH_SYN; 
+        if (config->type == TR_TCP6_SYN)
+           tcp->th_flags |= TH_SYN;
         else
-           tcp->th_flags |= TH_ACK; 
+           tcp->th_flags |= TH_ACK;
         tcp->th_sum = p_cksum(outip, (u_short *) tcp, packlen);
         /* set checksum for paris goodness */
         uint16_t crafted_cksum = htons(0xbeef);

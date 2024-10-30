@@ -36,6 +36,7 @@ class ICMP {
     void write(FILE **, uint32_t, char *, char *);
     char *getMPLS();
     bool is_yarrp;
+    bool found_ioam_trace;
 
     protected:
     uint32_t rtt;
@@ -68,7 +69,7 @@ class ICMP4 : public ICMP {
     private:
     struct ip *quote;
     struct in_addr ip_src;
-}; 
+};
 
 class ICMP6 : public ICMP {
     public:
@@ -83,4 +84,3 @@ class ICMP6 : public ICMP {
     struct in6_addr ip_src;
     struct in6_addr *yarrp_target;
 };
-
