@@ -161,6 +161,7 @@ ICMP4::ICMP4(struct ip *ip, struct icmp *icmp, uint32_t elapsed, bool _coarse): 
 ICMP6::ICMP6(struct ip6_hdr *ip, struct icmp6_hdr *icmp, uint32_t elapsed, bool _coarse) : ICMP()
 {
     is_yarrp = false;
+    found_ioam_trace = false;
     coarse = _coarse;
     memset(&ip_src, 0, sizeof(struct in6_addr));
     type = (uint8_t) icmp->icmp6_type;
@@ -203,9 +204,6 @@ ICMP6::ICMP6(struct ip6_hdr *ip, struct icmp6_hdr *icmp, uint32_t elapsed, bool 
                         uint8_t* trace_data = (uint8_t*) (eh)+16;
                         for (uint8_t i = 0; i < node_len || i < 48; i++) {
                             if (trace_data[i] != 0) {
-                                if (verbosity > LOW) {
-                                    printf("*** Found IOAM trace!\n");
-                                }
                                 found_ioam_trace = true;
                                 break;
                             }
@@ -302,6 +300,7 @@ void ICMP::print(char *src, char *dst, int sum) {
     if ( (quote_p == IPPROTO_ICMP) || (quote_p == IPPROTO_ICMPV6) )
       printf("\tQuoted ICMP checksum: %d\n", sport);
     if (sum) printf("\tCksum of probe dst: %d\n", sum);
+    if (found_ioam_trace) printf("\tIOAM trace found\n");
 }
 
 
@@ -375,7 +374,8 @@ void ICMP::write(FILE ** out, uint32_t count, char *src, char *target) {
     fprintf(*out, "%d %d %d %d ",
         probesize, replysize, replyttl, replytos);
     fprintf(*out, "%s ", getMPLS());
-    fprintf(*out, "%d\n", count);
+    fprintf(*out, "%d ", count);
+    fprintf(*out, "%d\n", found_ioam_trace);
 }
 
 void ICMP4::write(FILE ** out, uint32_t count) {

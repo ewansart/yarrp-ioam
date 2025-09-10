@@ -20,3 +20,9 @@ make
 ## Technical details
 
 * See https://www.cmand.org/yarrp
+
+## Usage for IOAM probing
+
+```shell
+./yarrp -vvv -i <destination_file> -t ICMP6 -a <local_iface_ip> -I <local_iface_name> -M <local_iface_mac> -G <next_hop_iface_mac> -X 0
+```

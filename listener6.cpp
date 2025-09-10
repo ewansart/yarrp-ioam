@@ -122,7 +122,7 @@ reloop:
                  (ippayload->icmp6_type == ICMP6_DST_UNREACH) or
                  (ippayload->icmp6_type == ICMP6_ECHO_REPLY) ) {
                 ICMP *icmp = new ICMP6(ip, ippayload, elapsed, trace->config->coarse);
-                if (icmp->is_yarrp && icmp->found_ioam_trace) {
+                if (icmp->is_yarrp) {
                     if (verbosity > LOW) {
                         icmp->print();
                     }
