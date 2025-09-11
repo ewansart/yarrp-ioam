@@ -26,3 +26,12 @@ make
 ```shell
 ./yarrp -vvv -i <destination_file> -t ICMP6 -a <local_iface_ip> -I <local_iface_name> -M <local_iface_mac> -G <next_hop_iface_mac> -X 0
 ```
+
+## Analysis
+
+`yarrp` generates a `.yrp` file.
+
+`yrp2warts` inside the [utils](./utils/) sub-directory to convert from `.yrp` to `.warts` file.
+
+Then, we can use tools from [CAIDA's scamper](https://www.caida.org/catalog/software/scamper/), such as `sc_warts2text` and `sc_warts2json` to parse the `.warts` file.
+
