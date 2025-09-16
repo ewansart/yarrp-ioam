@@ -17,6 +17,7 @@ template < class TYPE >
 void
 loop(YarrpConfig * config, TYPE * iplist, Traceroute * trace,
      Patricia * tree, Stats * stats) {
+    bool run = true;
     struct in_addr target;
     struct in6_addr target6;
     uint8_t ttl;
@@ -55,7 +56,7 @@ loop(YarrpConfig * config, TYPE * iplist, Traceroute * trace,
     }
 
     stats->to_probe = iplist->count();
-    while (true) {
+    while (run) {
         /* Grab next target/ttl pair from permutation */
         if (config->ipv6) {
             if ((iplist->next_address(&target6, &ttl)) == 0)
@@ -149,6 +150,11 @@ loop(YarrpConfig * config, TYPE * iplist, Traceroute * trace,
                     ts.tv_sec = sleep_time / nsec_per_sec;
                     ts.tv_nsec = sleep_time % nsec_per_sec;
                     while (nanosleep(&ts, &rem) == -1) {
+                        if (errno == EINTR) {
+                            run = false;
+                            continue;
+                        }
+                        fatal("unexpected nanosleep value");
                     }
                     last_time = t;
                 } else {
